@@ -2,16 +2,25 @@ package com.example.buriktool
 
 import android.app.Activity
 import android.os.Bundle
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
+import android.widget.Spinner
 import android.widget.TextView
 
 class MainActivity : Activity() {
 
-    private val pkg = BuildConfig.GAME_PKG
+    private val games = listOf(
+        "Free Fire MAX" to "com.dts.freefiremax",
+        "Free Fire" to "com.dts.freefireth"
+    )
+
     private lateinit var status: TextView
+    private lateinit var spinner: Spinner
+
+    private fun currentPkg(): String = games[spinner.selectedItemPosition].second
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -23,8 +32,16 @@ class MainActivity : Activity() {
         }
 
         val title = TextView(this).apply {
-            text = "Burik Tool - ${BuildConfig.GAME_NAME}\n($pkg)"
-            textSize = 20f
+            text = "Buriq Tools"
+            textSize = 22f
+        }
+
+        spinner = Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@MainActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                games.map { it.first }
+            )
         }
 
         val label = TextView(this).apply { text = "Offset tekstur: 3 (4 = paling burik)" }
@@ -44,16 +61,18 @@ class MainActivity : Activity() {
         status = TextView(this).apply { text = "Belum ada aksi." }
 
         apply.setOnClickListener {
+            val pkg = currentPkg()
             val n = seek.progress
             val cmd = "settings put global angle_gl_driver_selection_pkgs $pkg && " +
                 "settings put global angle_gl_driver_selection_values angle && " +
                 "setprop debug.angle.feature_overrides_enabled " +
                 "forceNearestFiltering:disableAnisotropicFiltering:forceTextureLodOffset$n && " +
                 "am force-stop $pkg"
-            su(cmd) { checkStatus("Diterapkan. Buka game dari awal.") }
+            su(cmd) { checkStatus("Diterapkan ke $pkg. Buka game dari awal.") }
         }
 
         reset.setOnClickListener {
+            val pkg = currentPkg()
             val cmd = "setprop debug.angle.feature_overrides_enabled '' ; " +
                 "settings delete global angle_gl_driver_selection_pkgs ; " +
                 "settings delete global angle_gl_driver_selection_values ; " +
@@ -63,7 +82,7 @@ class MainActivity : Activity() {
 
         refresh.setOnClickListener { checkStatus("Status:") }
 
-        listOf(title, label, seek, apply, reset, refresh, status).forEach { root.addView(it) }
+        listOf(title, spinner, label, seek, apply, reset, refresh, status).forEach { root.addView(it) }
         setContentView(ScrollView(this).apply { addView(root) })
     }
 

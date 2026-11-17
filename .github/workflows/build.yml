@@ -14,12 +14,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
-      - run: gradle assembleFfmaxDebug assembleFfthDebug
+      - run: gradle assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: BurikTool-FFMAX
-          path: app/build/outputs/apk/ffmax/debug/*.apk
-      - uses: actions/upload-artifact@v4
-        with:
-          name: BurikTool-FF
-          path: app/build/outputs/apk/ffth/debug/*.apk
+          name: BuriqTools
+          path: app/build/outputs/apk/debug/*.apk
