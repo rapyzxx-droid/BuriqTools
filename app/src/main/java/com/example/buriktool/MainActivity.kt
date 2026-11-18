@@ -325,7 +325,7 @@ class MainActivity : Activity() {
         chip.text = s
 
         modeTileTitle.text = "Mode: ${modeLabel()}"
-        modeTileSub.text = "$sub  (ketuk ganti)"
+        modeTileSub.text = sub
     }
 
     private fun checkRoot() {
@@ -485,7 +485,7 @@ class MainActivity : Activity() {
             setTextIsSelectable(true)
         }
         statusLine = TextView(this).apply {
-            text = "Belum ada aksi."
+            text = "Tekstur: 0 = tajam  •  4 = paling burik"
             textSize = 11f
             setTextColor(colorDim)
             typeface = Typeface.MONOSPACE
@@ -551,15 +551,43 @@ class MainActivity : Activity() {
             left.addWithMargin(card, if (i == 0) 0 else 10)
         }
 
-        // ===== Panel kanan: offset, tile, tombol Mulai =====
+        // ===== Panel kanan (tengah): tile + tombol Mulai =====
         val right = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
         }
+        val (launchBox, _, _) = makeTile("Buka game", "luncurkan") { launchGame(false) }
+        val (statusBox, _, _) = makeTile("Cek status", "baca ANGLE") {
+            if (ensureReady()) checkStatus("Status (${modeLabel()}):")
+        }
+        val (logBox, _, _) = makeTile("Log", "lihat detail") {
+            logPanel.visibility = if (logPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
+        right.addView(statusLine)
+        right.addWithMargin(rowOfTwo(launchBox, statusBox), 6)
+        right.addWithMargin(logBox, 6)
 
+        val start = TextView(this).apply {
+            text = "▶  Mulai"
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(colorOnAccent)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(colorAccentLight, colorAccent)
+            ).apply { cornerRadius = dp(12).toFloat() }
+            foreground = ripple(12)
+            minHeight = dp(52)
+            isClickable = true
+            setOnClickListener { applyOffset(true) }
+        }
+        right.addWithMargin(start, 8)
+
+        // ===== Bar bawah tengah: mode, tekstur, reset, terapkan =====
         val valueText = TextView(this).apply {
             text = savedOffset.toString()
-            textSize = 24f
+            textSize = 20f
             setTextColor(colorAccent)
             typeface = Typeface.DEFAULT_BOLD
         }
@@ -577,59 +605,53 @@ class MainActivity : Activity() {
             override fun onStartTrackingTouch(s: SeekBar?) {}
             override fun onStopTrackingTouch(s: SeekBar?) {}
         })
-        val offsetHeader = LinearLayout(this).apply {
+        val texHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        offsetHeader.addView(
-            smallLabel("OFFSET TEKSTUR   (0 tajam  •  4 paling burik)"),
+        texHeader.addView(
+            smallLabel("TEKSTUR"),
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         )
-        offsetHeader.addView(valueText)
-        val offsetCard = LinearLayout(this).apply {
+        texHeader.addView(valueText)
+        val texBlock = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = glass(30, 70, 14)
-            setPadding(dp(14), dp(6), dp(14), dp(6))
+            setPadding(dp(8), dp(0), dp(8), dp(0))
         }
-        offsetCard.addView(offsetHeader)
-        offsetCard.addWithMargin(offsetSeek, 2)
-        right.addView(offsetCard)
+        texBlock.addView(texHeader)
+        texBlock.addView(offsetSeek)
 
         val (modeBox, modeT, modeS) = makeTile("Mode", "") {
             setMode(if (mode == "root") "shizuku" else "root")
         }
         modeTileTitle = modeT
         modeTileSub = modeS
-        val (applyBox, _, _) = makeTile("Terapkan", "tanpa membuka game") { applyOffset(false) }
-        val (launchBox, _, _) = makeTile("Buka game", "luncurkan game terpilih") { launchGame(false) }
-        val (resetBox, _, _) = makeTile("Reset", "kembali ke normal") { resetAll() }
-        val (statusBox, _, _) = makeTile("Cek status", "baca pengaturan ANGLE") {
-            if (ensureReady()) checkStatus("Status (${modeLabel()}):")
-        }
-        val (logBox, _, _) = makeTile("Log", "lihat detail") {
-            logPanel.visibility = if (logPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-        }
-        right.addWithMargin(rowOfTwo(modeBox, applyBox), 6)
-        right.addWithMargin(rowOfTwo(launchBox, resetBox), 6)
-        right.addWithMargin(rowOfTwo(statusBox, logBox), 6)
-        right.addWithMargin(statusLine, 4)
+        modeBox.minimumWidth = dp(124)
+        val (resetBox, _, _) = makeTile("Reset", "ke normal") { resetAll() }
+        resetBox.minimumWidth = dp(84)
+        val (applyBox, applyT, applyS) = makeTile("Terapkan", "tanpa buka game") { applyOffset(false) }
+        applyBox.minimumWidth = dp(116)
+        applyBox.background = rounded(colorAccent, 12)
+        applyT.setTextColor(colorOnAccent)
+        applyS.setTextColor(colorOnAccent)
 
-        val start = TextView(this).apply {
-            text = "▶  Mulai"
-            textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            setTextColor(colorOnAccent)
-            background = GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(colorAccentLight, colorAccent)
-            ).apply { cornerRadius = dp(12).toFloat() }
-            foreground = ripple(12)
-            minHeight = dp(48)
-            isClickable = true
-            setOnClickListener { applyOffset(true) }
+        fun lp(w: Int, ms: Int = 0, me: Int = 0) = LinearLayout.LayoutParams(
+            w, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            marginStart = dp(ms)
+            marginEnd = dp(me)
         }
-        right.addWithMargin(start, 6)
+
+        val bottomBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = glass(40, 110, 28)
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+        }
+        bottomBar.addView(modeBox, lp(LinearLayout.LayoutParams.WRAP_CONTENT))
+        bottomBar.addView(texBlock, lp(dp(190), 8, 8))
+        bottomBar.addView(resetBox, lp(LinearLayout.LayoutParams.WRAP_CONTENT))
+        bottomBar.addView(applyBox, lp(LinearLayout.LayoutParams.WRAP_CONTENT, 6, 0))
 
         // ===== Panel log (muncul saat tile Log diketuk) =====
         val logHeader = LinearLayout(this).apply {
@@ -679,8 +701,8 @@ class MainActivity : Activity() {
                 isFillViewport = true
                 addView(left)
             },
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 4.6f)
-                .apply { marginEnd = dp(20) }
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 5.2f)
+                .apply { marginEnd = dp(16) }
         )
         middle.addView(
             ScrollView(this).apply {
@@ -688,7 +710,7 @@ class MainActivity : Activity() {
                 isFillViewport = true
                 addView(right)
             },
-            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 5.4f)
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 3.8f)
         )
 
         val column = LinearLayout(this).apply {
@@ -709,6 +731,16 @@ class MainActivity : Activity() {
                 0,
                 1f
             ).apply { topMargin = dp(4) }
+        )
+        column.addView(
+            bottomBar,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = dp(6)
+            }
         )
 
         val rootFrame = FrameLayout(this).apply {
@@ -735,6 +767,7 @@ class MainActivity : Activity() {
                 FrameLayout.LayoutParams.MATCH_PARENT
             ).apply { setMargins(dp(80), dp(50), dp(80), dp(20)) }
         )
+
         window.attributes = window.attributes.apply {
             layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
