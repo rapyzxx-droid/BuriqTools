@@ -14,6 +14,7 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -23,6 +24,9 @@ import android.text.TextUtils
 import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
+import android.view.WindowManager
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -163,8 +167,8 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             background = glass(36, 80, 12)
             foreground = ripple(12)
-            minimumHeight = dp(48)
-            setPadding(dp(12), dp(6), dp(12), dp(6))
+            minimumHeight = dp(44)
+            setPadding(dp(12), dp(4), dp(12), dp(4))
             isClickable = true
             setOnClickListener { onClick() }
             addView(t)
@@ -555,7 +559,7 @@ class MainActivity : Activity() {
 
         val valueText = TextView(this).apply {
             text = savedOffset.toString()
-            textSize = 28f
+            textSize = 24f
             setTextColor(colorAccent)
             typeface = Typeface.DEFAULT_BOLD
         }
@@ -585,7 +589,7 @@ class MainActivity : Activity() {
         val offsetCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = glass(30, 70, 14)
-            setPadding(dp(14), dp(8), dp(14), dp(8))
+            setPadding(dp(14), dp(6), dp(14), dp(6))
         }
         offsetCard.addView(offsetHeader)
         offsetCard.addWithMargin(offsetSeek, 2)
@@ -605,10 +609,10 @@ class MainActivity : Activity() {
         val (logBox, _, _) = makeTile("Log", "lihat detail") {
             logPanel.visibility = if (logPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
         }
-        right.addWithMargin(rowOfTwo(modeBox, applyBox), 8)
-        right.addWithMargin(rowOfTwo(launchBox, resetBox), 8)
-        right.addWithMargin(rowOfTwo(statusBox, logBox), 8)
-        right.addWithMargin(statusLine, 8)
+        right.addWithMargin(rowOfTwo(modeBox, applyBox), 6)
+        right.addWithMargin(rowOfTwo(launchBox, resetBox), 6)
+        right.addWithMargin(rowOfTwo(statusBox, logBox), 6)
+        right.addWithMargin(statusLine, 4)
 
         val start = TextView(this).apply {
             text = "▶  Mulai"
@@ -621,11 +625,11 @@ class MainActivity : Activity() {
                 intArrayOf(colorAccentLight, colorAccent)
             ).apply { cornerRadius = dp(12).toFloat() }
             foreground = ripple(12)
-            minHeight = dp(52)
+            minHeight = dp(48)
             isClickable = true
             setOnClickListener { applyOffset(true) }
         }
-        right.addWithMargin(start, 8)
+        right.addWithMargin(start, 6)
 
         // ===== Panel log (muncul saat tile Log diketuk) =====
         val logHeader = LinearLayout(this).apply {
@@ -689,7 +693,7 @@ class MainActivity : Activity() {
 
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(26), dp(10), dp(26), dp(12))
+            setPadding(dp(26), dp(8), dp(26), dp(10))
         }
         column.addView(
             topBar,
@@ -704,7 +708,7 @@ class MainActivity : Activity() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 0,
                 1f
-            ).apply { topMargin = dp(8) }
+            ).apply { topMargin = dp(4) }
         )
 
         val rootFrame = FrameLayout(this).apply {
@@ -731,7 +735,20 @@ class MainActivity : Activity() {
                 FrameLayout.LayoutParams.MATCH_PARENT
             ).apply { setMargins(dp(80), dp(50), dp(80), dp(20)) }
         )
+        window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+        // Beri jarak dari area kamera (cutout) supaya isi tidak tertutup.
+        rootFrame.setOnApplyWindowInsetsListener { _, insets ->
+            val cut = insets.displayCutout
+            val l = maxOf(dp(26), (cut?.safeInsetLeft ?: 0) + dp(8))
+            val r = maxOf(dp(26), (cut?.safeInsetRight ?: 0) + dp(8))
+            column.setPadding(l, dp(8), r, dp(10))
+            insets
+        }
         setContentView(rootFrame)
+        hideSystemBars()
 
         try {
             Shizuku.addRequestPermissionResultListener(permListener)
@@ -744,6 +761,32 @@ class MainActivity : Activity() {
         refreshUi()
         updateBattery()
         if (mode == "root") checkRoot()
+    }
+
+    // Sembunyikan status bar & navigation bar; muncul sementara kalau digeser dari tepi layar.
+    private fun hideSystemBars() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.setDecorFitsSystemWindows(false)
+            window.insetsController?.let {
+                it.hide(WindowInsets.Type.systemBars())
+                it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                )
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideSystemBars()
     }
 
     override fun onResume() {
