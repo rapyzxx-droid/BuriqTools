@@ -7,7 +7,9 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
@@ -17,14 +19,13 @@ import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.View
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
+import android.view.ViewOutlineProvider
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
-import android.widget.Spinner
 import android.widget.TextView
 import rikka.shizuku.Shizuku
 
@@ -37,13 +38,15 @@ class MainActivity : Activity() {
 
     private lateinit var prefs: SharedPreferences
     private lateinit var status: TextView
-    private lateinit var spinner: Spinner
     private lateinit var chip: TextView
     private lateinit var modeHint: TextView
+    private lateinit var targetText: TextView
     private lateinit var btnRoot: Button
     private lateinit var btnShizuku: Button
     private lateinit var autoLaunch: CheckBox
+    private val gameCards = mutableListOf<LinearLayout>()
 
+    private var selectedGame = 0
     private var mode = "root"
     private var rootOk: Boolean? = null
     private val ui = Handler(Looper.getMainLooper())
@@ -84,7 +87,7 @@ class MainActivity : Activity() {
     private fun cardLayout() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         background = rounded(colorCard, 16)
-        setPadding(dp(16), dp(14), dp(16), dp(16))
+        setPadding(dp(16), dp(12), dp(16), dp(14))
     }
 
     private fun smallLabel(t: String) = TextView(this).apply {
@@ -98,11 +101,11 @@ class MainActivity : Activity() {
     private fun styledButton(label: String, fill: Int, textColor: Int) = Button(this).apply {
         text = label
         isAllCaps = false
-        textSize = 16f
+        textSize = 15f
         setTextColor(textColor)
         background = rounded(fill, 14)
         stateListAnimator = null
-        minHeight = dp(52)
+        minHeight = dp(46)
     }
 
     private fun LinearLayout.addWithMargin(v: View, topDp: Int = 0) {
@@ -123,9 +126,93 @@ class MainActivity : Activity() {
             .apply { marginStart = dp(6) })
     }
 
-    private fun currentPkg(): String = games[spinner.selectedItemPosition].second
-    private fun currentGameName(): String = games[spinner.selectedItemPosition].first
+    private fun currentPkg(): String = games[selectedGame].second
+    private fun currentGameName(): String = games[selectedGame].first
     private fun modeLabel(): String = if (mode == "root") "Root" else "Shizuku"
+
+    // ---------- ikon & daftar game ----------
+
+    private fun isInstalled(pkg: String): Boolean = try {
+        packageManager.getApplicationInfo(pkg, 0)
+        true
+    } catch (e: Exception) {
+        false
+    }
+
+    private fun iconOf(pkg: String): Drawable? = try {
+        packageManager.getApplicationIcon(pkg)
+    } catch (e: Exception) {
+        getDrawable(android.R.drawable.sym_def_app_icon)
+    }
+
+    private fun buildGameCard(index: Int): LinearLayout {
+        val (name, pkg) = games[index]
+        val installed = isInstalled(pkg)
+
+        val icon = ImageView(this).apply {
+            setImageDrawable(iconOf(pkg))
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(v: View, o: Outline) {
+                    o.setRoundRect(0, 0, v.width, v.height, dp(12).toFloat())
+                }
+            }
+            clipToOutline = true
+        }
+
+        val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        texts.addView(TextView(this).apply {
+            text = name
+            textSize = 15f
+            setTextColor(colorText)
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        texts.addView(TextView(this).apply {
+            text = pkg
+            textSize = 11f
+            setTextColor(colorDim)
+            typeface = Typeface.MONOSPACE
+        })
+        if (!installed) {
+            texts.addView(TextView(this).apply {
+                text = "belum terpasang"
+                textSize = 11f
+                setTextColor(colorRed)
+            })
+        }
+
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            addView(icon, LinearLayout.LayoutParams(dp(50), dp(50)))
+            addView(
+                texts,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { marginStart = dp(12) }
+            )
+            setOnClickListener { selectGame(index) }
+        }
+    }
+
+    private fun selectGame(i: Int) {
+        selectedGame = i
+        prefs.edit().putInt("game", i).apply()
+        refreshGameCards()
+    }
+
+    private fun refreshGameCards() {
+        gameCards.forEachIndexed { i, v ->
+            v.background = GradientDrawable().apply {
+                setColor(colorCard)
+                cornerRadius = dp(16).toFloat()
+                setStroke(dp(2), if (i == selectedGame) colorAccent else colorCard)
+            }
+        }
+        targetText.text = "Target: ${currentGameName()} (${currentPkg()})"
+    }
 
     // ---------- status mode ----------
 
@@ -149,9 +236,9 @@ class MainActivity : Activity() {
                 null -> colorGray
             }
             modeHint.text = when (rootOk) {
-                true -> "Perintah dijalankan lewat su. Root aktif."
+                true -> "Perintah lewat su. Root aktif."
                 false -> "Root tidak tersedia atau ditolak. Cek izin di manajer root."
-                null -> "Perintah dijalankan lewat su. Memeriksa root..."
+                null -> "Perintah lewat su. Memeriksa root..."
             }
         } else {
             label = "SHIZUKU"
@@ -300,16 +387,13 @@ class MainActivity : Activity() {
 
         prefs = getSharedPreferences("buriq", Context.MODE_PRIVATE)
         val savedOffset = prefs.getInt("offset", 3).coerceIn(0, 4)
-        val savedGame = prefs.getInt("game", 0).coerceIn(0, games.size - 1)
+        selectedGame = prefs.getInt("game", 0).coerceIn(0, games.size - 1)
         val savedAuto = prefs.getBoolean("autolaunch", false)
         mode = prefs.getString("mode", "root") ?: "root"
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(44), dp(18), dp(28))
-        }
+        // ===== Panel kiri: label mode, judul, daftar game, mode =====
+        val left = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        // Label mode di pojok kiri atas
         chip = TextView(this).apply {
             textSize = 13f
             typeface = Typeface.DEFAULT_BOLD
@@ -317,7 +401,7 @@ class MainActivity : Activity() {
             background = rounded(colorCard, 20)
             setPadding(dp(14), dp(6), dp(14), dp(6))
         }
-        root.addView(
+        left.addView(
             chip,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -325,61 +409,54 @@ class MainActivity : Activity() {
             )
         )
 
-        val title = TextView(this).apply {
+        left.addWithMargin(TextView(this).apply {
             text = "Buriq Tools"
-            textSize = 28f
+            textSize = 26f
             setTextColor(colorText)
             typeface = Typeface.DEFAULT_BOLD
-        }
-        val subtitle = TextView(this).apply {
+        }, 10)
+        left.addWithMargin(TextView(this).apply {
             text = "Kontrol tekstur ANGLE"
-            textSize = 13f
+            textSize = 12f
             setTextColor(colorDim)
-        }
-        root.addWithMargin(title, 14)
-        root.addWithMargin(subtitle, 2)
+        }, 2)
 
-        // Kartu mode
+        left.addWithMargin(smallLabel("GAME"), 16)
+        for (i in games.indices) {
+            val card = buildGameCard(i)
+            gameCards.add(card)
+            left.addWithMargin(card, 8)
+        }
+
         val modeCard = cardLayout()
         modeCard.addView(smallLabel("MODE"))
-        btnRoot = styledButton("Root", colorAccent, colorOnAccent).apply { minHeight = dp(44) }
-        btnShizuku = styledButton("Shizuku", colorBtn, colorText).apply { minHeight = dp(44) }
+        btnRoot = styledButton("Root", colorAccent, colorOnAccent).apply { minHeight = dp(40) }
+        btnShizuku = styledButton("Shizuku", colorBtn, colorText).apply { minHeight = dp(40) }
         btnRoot.setOnClickListener { setMode("root") }
         btnShizuku.setOnClickListener { setMode("shizuku") }
         modeCard.addWithMargin(rowOfTwo(btnRoot, btnShizuku), 8)
         modeHint = TextView(this).apply {
-            textSize = 12f
+            textSize = 11.5f
             setTextColor(colorDim)
         }
         modeCard.addWithMargin(modeHint, 8)
-        root.addWithMargin(modeCard, 18)
+        left.addWithMargin(modeCard, 14)
 
-        // Kartu game
-        val gameCard = cardLayout()
-        gameCard.addView(smallLabel("GAME"))
-        spinner = Spinner(this).apply {
-            adapter = ArrayAdapter(
-                this@MainActivity,
-                android.R.layout.simple_spinner_dropdown_item,
-                games.map { it.first }
-            )
-            setSelection(savedGame)
-            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
-                    prefs.edit().putInt("game", pos).apply()
-                }
-                override fun onNothingSelected(p: AdapterView<*>?) {}
-            }
+        // ===== Panel kanan: target, offset, tombol, log =====
+        val right = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        targetText = TextView(this).apply {
+            textSize = 12f
+            setTextColor(colorDim)
+            typeface = Typeface.MONOSPACE
         }
-        gameCard.addWithMargin(spinner, 4)
-        root.addWithMargin(gameCard, 14)
+        right.addView(targetText)
 
-        // Kartu offset
         val offsetCard = cardLayout()
         offsetCard.addView(smallLabel("OFFSET TEKSTUR"))
         val valueText = TextView(this).apply {
             text = savedOffset.toString()
-            textSize = 48f
+            textSize = 44f
             gravity = Gravity.CENTER
             setTextColor(colorAccent)
             typeface = Typeface.DEFAULT_BOLD
@@ -387,7 +464,6 @@ class MainActivity : Activity() {
         val hint = TextView(this).apply {
             text = "0 = tajam   •   4 = paling burik"
             textSize = 12f
-            gravity = Gravity.CENTER
             setTextColor(colorDim)
         }
         val seek = SeekBar(this).apply {
@@ -404,6 +480,17 @@ class MainActivity : Activity() {
             override fun onStartTrackingTouch(s: SeekBar?) {}
             override fun onStopTrackingTouch(s: SeekBar?) {}
         })
+        val offsetCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        offsetCol.addView(hint)
+        offsetCol.addWithMargin(seek, 6)
+        val offsetRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        offsetRow.addView(valueText, LinearLayout.LayoutParams(dp(76), LinearLayout.LayoutParams.WRAP_CONTENT))
+        offsetRow.addView(offsetCol, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        offsetCard.addWithMargin(offsetRow, 4)
+
         autoLaunch = CheckBox(this).apply {
             text = "Buka game otomatis setelah Terapkan"
             textSize = 13f
@@ -414,33 +501,27 @@ class MainActivity : Activity() {
                 prefs.edit().putBoolean("autolaunch", checked).apply()
             }
         }
-        offsetCard.addWithMargin(valueText, 4)
-        offsetCard.addWithMargin(hint)
-        offsetCard.addWithMargin(seek, 10)
-        offsetCard.addWithMargin(autoLaunch, 12)
-        root.addWithMargin(offsetCard, 14)
+        offsetCard.addWithMargin(autoLaunch, 8)
+        right.addWithMargin(offsetCard, 8)
 
-        // Tombol aksi
         val apply = styledButton("Terapkan", colorAccent, colorOnAccent)
         val launch = styledButton("Buka game", colorBtn, colorText)
         val reset = styledButton("Reset", colorBtn, colorText)
         val refresh = styledButton("Cek status", colorBtn, colorText)
-        root.addWithMargin(apply, 18)
-        root.addWithMargin(launch, 10)
-        root.addWithMargin(rowOfTwo(reset, refresh), 10)
+        right.addWithMargin(rowOfTwo(apply, launch), 12)
+        right.addWithMargin(rowOfTwo(reset, refresh), 10)
 
-        // Kartu log
         val logCard = cardLayout()
         logCard.addView(smallLabel("LOG"))
         status = TextView(this).apply {
             text = "Belum ada aksi."
-            textSize = 12.5f
+            textSize = 12f
             setTextColor(colorText)
             typeface = Typeface.MONOSPACE
             setTextIsSelectable(true)
         }
         logCard.addWithMargin(status, 6)
-        root.addWithMargin(logCard, 18)
+        right.addWithMargin(logCard, 12)
 
         apply.setOnClickListener {
             if (!ensureReady()) return@setOnClickListener
@@ -480,11 +561,30 @@ class MainActivity : Activity() {
             checkStatus("Status (${modeLabel()}):")
         }
 
-        setContentView(ScrollView(this).apply {
+        // ===== Susun layout landscape =====
+        val rootRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(colorBg)
-            isFillViewport = true
-            addView(root)
-        })
+            setPadding(dp(24), dp(14), dp(24), dp(14))
+        }
+        val leftScroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            addView(left)
+        }
+        val rightScroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            addView(right)
+        }
+        rootRow.addView(
+            leftScroll,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 4f)
+                .apply { marginEnd = dp(18) }
+        )
+        rootRow.addView(
+            rightScroll,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 6f)
+        )
+        setContentView(rootRow)
 
         try {
             Shizuku.addRequestPermissionResultListener(permListener)
@@ -493,6 +593,7 @@ class MainActivity : Activity() {
         } catch (e: Throwable) {
         }
 
+        refreshGameCards()
         refreshUi()
         if (mode == "root") checkRoot()
     }

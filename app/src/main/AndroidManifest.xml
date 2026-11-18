@@ -9,6 +9,7 @@
     </queries>
 
     <application
+        android:icon="@mipmap/ic_launcher"
         android:label="Buriq Tools"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
 
@@ -22,7 +23,9 @@
 
         <activity
             android:name="com.example.buriktool.MainActivity"
-            android:exported="true">
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:exported="true"
+            android:screenOrientation="sensorLandscape">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
