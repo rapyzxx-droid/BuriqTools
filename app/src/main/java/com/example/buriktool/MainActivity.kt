@@ -568,11 +568,18 @@ class MainActivity : Activity() {
             setTextColor(colorText)
         }
         val brand = TextView(this).apply {
-            text = if (horror) "☠ BURIQ TOOLS ☠" else "BURIQ TOOLS"
+            text = if (horror) "Sudah Malam Apa Sudah Tahu?          " else "BURIQ TOOLS"
             textSize = 11f
-            letterSpacing = 0.2f
-            setTextColor(colorDim)
+            letterSpacing = if (horror) 0.1f else 0.2f
+            setTextColor(if (horror) colorRed else colorDim)
             typeface = Typeface.DEFAULT_BOLD
+            if (horror) {
+                // teks berjalan (marquee)
+                isSingleLine = true
+                ellipsize = android.text.TextUtils.TruncateAt.MARQUEE
+                marqueeRepeatLimit = -1
+                isSelected = true
+            }
             // Easter egg: ketuk judul 7x untuk pratinjau/matikan mode horor
             setOnClickListener {
                 val now = System.currentTimeMillis()
@@ -610,7 +617,11 @@ class MainActivity : Activity() {
             )
         }
         topBar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-        topBar.addView(brand)
+        if (horror) {
+            topBar.addView(brand, LinearLayout.LayoutParams(dp(190), LinearLayout.LayoutParams.WRAP_CONTENT))
+        } else {
+            topBar.addView(brand)
+        }
         topBar.addView(gear, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(12) })
 
         // ===== Panel kiri: daftar game =====
