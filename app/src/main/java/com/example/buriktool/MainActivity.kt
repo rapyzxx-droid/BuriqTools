@@ -468,6 +468,20 @@ class MainActivity : Activity() {
         startActivity(intent)
     }
 
+    // ---------- buka/tutup panel ----------
+
+    private fun toggleSettings() {
+        val show = settingsPanel.visibility != View.VISIBLE
+        settingsPanel.visibility = if (show) View.VISIBLE else View.GONE
+        if (show) logPanel.visibility = View.GONE
+    }
+
+    private fun toggleLog() {
+        val show = logPanel.visibility != View.VISIBLE
+        logPanel.visibility = if (show) View.VISIBLE else View.GONE
+        if (show) settingsPanel.visibility = View.GONE
+    }
+
     // ---------- lifecycle ----------
 
     override fun onCreate(savedInstanceState: Bundle?) {
