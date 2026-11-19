@@ -54,6 +54,7 @@ class MainActivity : Activity() {
     private lateinit var modeTileSub: TextView
     private lateinit var offsetSeek: SeekBar
     private lateinit var logPanel: LinearLayout
+    private lateinit var settingsPanel: LinearLayout
     private val gameCards = mutableListOf<LinearLayout>()
 
     private var selectedGame = 0
@@ -485,7 +486,7 @@ class MainActivity : Activity() {
             setTextIsSelectable(true)
         }
         statusLine = TextView(this).apply {
-            text = "Tekstur: 0 = tajam  •  4 = paling burik"
+            text = "Siap. Atur tekstur di ⚙ pojok kanan atas."
             textSize = 11f
             setTextColor(colorDim)
             typeface = Typeface.MONOSPACE
@@ -493,7 +494,7 @@ class MainActivity : Activity() {
             ellipsize = TextUtils.TruncateAt.END
         }
 
-        // ===== Bar atas: label mode (kiri), jam, baterai, suhu =====
+        // ===== Bar atas: label mode (kiri), jam, baterai, suhu, tombol pengaturan (kanan) =====
         chip = TextView(this).apply {
             textSize = 13f
             typeface = Typeface.DEFAULT_BOLD
@@ -523,6 +524,16 @@ class MainActivity : Activity() {
             setTextColor(colorDim)
             typeface = Typeface.DEFAULT_BOLD
         }
+        val gear = TextView(this).apply {
+            text = "⚙"
+            textSize = 20f
+            gravity = Gravity.CENTER
+            setTextColor(colorText)
+            background = glass(40, 90, 20)
+            foreground = ripple(20)
+            isClickable = true
+            setOnClickListener { toggleSettings() }
+        }
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -539,6 +550,7 @@ class MainActivity : Activity() {
         }
         topBar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         topBar.addView(brand)
+        topBar.addView(gear, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(12) })
 
         // ===== Panel kiri: daftar game =====
         val left = LinearLayout(this).apply {
@@ -551,20 +563,13 @@ class MainActivity : Activity() {
             left.addWithMargin(card, if (i == 0) 0 else 10)
         }
 
-        // ===== Panel kanan (tengah): tile + tombol Mulai =====
+        // ===== Panel kanan (menu utama): hanya Log dan Mulai =====
         val right = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val (launchBox, _, _) = makeTile("Buka game", "luncurkan") { launchGame(false) }
-        val (statusBox, _, _) = makeTile("Cek status", "baca ANGLE") {
-            if (ensureReady()) checkStatus("Status (${modeLabel()}):")
-        }
-        val (logBox, _, _) = makeTile("Log", "lihat detail") {
-            logPanel.visibility = if (logPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-        }
+        val (logBox, _, _) = makeTile("Log", "lihat detail") { toggleLog() }
         right.addView(statusLine)
-        right.addWithMargin(rowOfTwo(launchBox, statusBox), 6)
         right.addWithMargin(logBox, 6)
 
         val start = TextView(this).apply {
@@ -584,7 +589,7 @@ class MainActivity : Activity() {
         }
         right.addWithMargin(start, 8)
 
-        // ===== Bar bawah tengah: mode, tekstur, reset, terapkan =====
+        // ===== Panel pengaturan (dropdown kanan atas): mode, tekstur, reset, terapkan, cek status =====
         val valueText = TextView(this).apply {
             text = savedOffset.toString()
             textSize = 20f
@@ -610,13 +615,14 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         texHeader.addView(
-            smallLabel("TEKSTUR"),
+            smallLabel("TEKSTUR  (0 tajam • 4 burik)"),
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         )
         texHeader.addView(valueText)
         val texBlock = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(0), dp(8), dp(0))
+            background = glass(30, 70, 12)
+            setPadding(dp(12), dp(8), dp(12), dp(4))
         }
         texBlock.addView(texHeader)
         texBlock.addView(offsetSeek)
@@ -626,32 +632,60 @@ class MainActivity : Activity() {
         }
         modeTileTitle = modeT
         modeTileSub = modeS
-        modeBox.minimumWidth = dp(124)
         val (resetBox, _, _) = makeTile("Reset", "ke normal") { resetAll() }
-        resetBox.minimumWidth = dp(84)
         val (applyBox, applyT, applyS) = makeTile("Terapkan", "tanpa buka game") { applyOffset(false) }
-        applyBox.minimumWidth = dp(116)
         applyBox.background = rounded(colorAccent, 12)
         applyT.setTextColor(colorOnAccent)
         applyS.setTextColor(colorOnAccent)
-
-        fun lp(w: Int, ms: Int = 0, me: Int = 0) = LinearLayout.LayoutParams(
-            w, LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            marginStart = dp(ms)
-            marginEnd = dp(me)
+        val (statusBox, _, _) = makeTile("Cek status", "baca pengaturan ANGLE") {
+            if (ensureReady()) checkStatus("Status (${modeLabel()}):")
         }
 
-        val bottomBar = LinearLayout(this).apply {
+        val settingsBody = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        settingsBody.addWithMargin(modeBox)
+        settingsBody.addWithMargin(texBlock, 8)
+        settingsBody.addWithMargin(rowOfTwo(resetBox, applyBox), 8)
+        settingsBody.addWithMargin(statusBox, 8)
+
+        val settingsHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = glass(40, 110, 28)
-            setPadding(dp(10), dp(6), dp(10), dp(6))
         }
-        bottomBar.addView(modeBox, lp(LinearLayout.LayoutParams.WRAP_CONTENT))
-        bottomBar.addView(texBlock, lp(dp(190), 8, 8))
-        bottomBar.addView(resetBox, lp(LinearLayout.LayoutParams.WRAP_CONTENT))
-        bottomBar.addView(applyBox, lp(LinearLayout.LayoutParams.WRAP_CONTENT, 6, 0))
+        settingsHeader.addView(
+            smallLabel("PENGATURAN"),
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        )
+        settingsHeader.addView(TextView(this).apply {
+            text = "Tutup"
+            textSize = 13f
+            setTextColor(colorAccent)
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            isClickable = true
+            setOnClickListener { settingsPanel.visibility = View.GONE }
+        })
+        settingsPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#F2101C19"))
+                cornerRadius = dp(16).toFloat()
+                setStroke(dp(1), Color.argb(90, 255, 255, 255))
+            }
+            setPadding(dp(14), dp(10), dp(14), dp(12))
+            visibility = View.GONE
+            isClickable = true
+        }
+        settingsPanel.addView(settingsHeader)
+        settingsPanel.addView(
+            ScrollView(this).apply {
+                isVerticalScrollBarEnabled = false
+                addView(settingsBody)
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(6) }
+        )
 
         // ===== Panel log (muncul saat tile Log diketuk) =====
         val logHeader = LinearLayout(this).apply {
@@ -732,16 +766,6 @@ class MainActivity : Activity() {
                 1f
             ).apply { topMargin = dp(4) }
         )
-        column.addView(
-            bottomBar,
-            LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                topMargin = dp(6)
-            }
-        )
 
         val rootFrame = FrameLayout(this).apply {
             background = GradientDrawable(
@@ -766,6 +790,16 @@ class MainActivity : Activity() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             ).apply { setMargins(dp(80), dp(50), dp(80), dp(20)) }
+        )
+        rootFrame.addView(
+            settingsPanel,
+            FrameLayout.LayoutParams(
+                dp(340),
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.END
+                setMargins(0, dp(54), dp(40), dp(12))
+            }
         )
 
         window.attributes = window.attributes.apply {
