@@ -701,6 +701,21 @@ class MainActivity : Activity() {
             ).apply { topMargin = dp(6) }
         )
 
+        // Credit di bagian bawah panel pengaturan
+        settingsPanel.addView(
+            TextView(this).apply {
+                text = "Credit: Danzy & Claude"
+                textSize = 11f
+                gravity = Gravity.CENTER
+                setTextColor(colorDim)
+                typeface = Typeface.DEFAULT_BOLD
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(10) }
+        )
+
         // ===== Panel log (muncul saat tile Log diketuk) =====
         val logHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
