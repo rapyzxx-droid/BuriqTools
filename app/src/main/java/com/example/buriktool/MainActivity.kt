@@ -18,7 +18,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import java.util.Calendar
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.TextUtils
@@ -63,45 +62,23 @@ class MainActivity : Activity() {
     private var rootOk: Boolean? = null
     private val ui = Handler(Looper.getMainLooper())
 
-    companion object {
-        // null = ikuti jam; true/false = dipaksa lewat easter egg (ketuk judul 7x)
-        private var horrorForce: Boolean? = null
-    }
-
-    // Easter egg: jam 01.00 - 02.59 tampilan jadi horor
-    private fun isHorrorTime(): Boolean {
-        horrorForce?.let { return it }
-        val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        return h in 1..2
-    }
-
-    private val horror = isHorrorTime()
-    private var rootView: View? = null
-    private var brandTaps = 0
-    private var lastBrandTap = 0L
-
-    private val colorText = Color.parseColor(if (horror) "#EAD7D7" else "#F2F7F5")
-    private val colorDim = Color.parseColor(if (horror) "#A67C7C" else "#9DB5AD")
-    private val colorAccent = Color.parseColor(if (horror) "#C1121F" else "#4FD6A0")
-    private val colorAccentLight = Color.parseColor(if (horror) "#FF3B3B" else "#8CF5CC")
-    private val colorOnAccent = Color.parseColor(if (horror) "#FFF1F1" else "#06241A")
-    private val colorGreen = Color.parseColor(if (horror) "#8A9A5B" else "#3DDC84")
-    private val colorRed = Color.parseColor(if (horror) "#FF1A1A" else "#FF5C5C")
-    private val colorOrange = Color.parseColor(if (horror) "#C97A20" else "#FFB020")
-    private val colorGray = Color.parseColor(if (horror) "#7A6666" else "#6E7F79")
-    private val colorPanel = Color.parseColor(if (horror) "#F2140505" else "#F2101C19")
-    private val colorBg1 = Color.parseColor(if (horror) "#080000" else "#0B1614")
-    private val colorBg2 = Color.parseColor(if (horror) "#2B0509" else "#12302A")
-    private val colorBg3 = Color.parseColor(if (horror) "#0F0003" else "#0B1B1F")
+    private val colorText = Color.parseColor("#F2F7F5")
+    private val colorDim = Color.parseColor("#9DB5AD")
+    private val colorAccent = Color.parseColor("#4FD6A0")
+    private val colorAccentLight = Color.parseColor("#8CF5CC")
+    private val colorOnAccent = Color.parseColor("#06241A")
+    private val colorGreen = Color.parseColor("#3DDC84")
+    private val colorRed = Color.parseColor("#FF5C5C")
+    private val colorOrange = Color.parseColor("#FFB020")
+    private val colorGray = Color.parseColor("#6E7F79")
+    private val colorPanel = Color.parseColor("#F2101C19")
+    private val colorBg1 = Color.parseColor("#0B1614")
+    private val colorBg2 = Color.parseColor("#12302A")
+    private val colorBg3 = Color.parseColor("#0B1B1F")
 
     private val tick = object : Runnable {
         override fun run() {
-            if (isHorrorTime() != horror) {
-                this@MainActivity.recreate()
-                return
-            }
             updateBattery()
-            if (horror && Math.random() < 0.5) flicker()
             ui.postDelayed(this, 10000)
         }
     }
@@ -119,13 +96,19 @@ class MainActivity : Activity() {
     private val binderListener = Shizuku.OnBinderReceivedListener { runOnUiThread { refreshUi() } }
     private val deadListener = Shizuku.OnBinderDeadListener { runOnUiThread { refreshUi() } }
 
-    // Layar berkedip sebentar (hanya mode horor)
-    private fun flicker() {
-        val v = rootView ?: return
-        v.alpha = 0.45f
-        ui.postDelayed({ v.alpha = 1f }, 60)
-        ui.postDelayed({ v.alpha = 0.7f }, 130)
-        ui.postDelayed({ v.alpha = 1f }, 200)
+    // Pemberitahuan sambutan: hanya tampil sekali saat pertama kali dibuka
+    private fun showWelcomeOnce() {
+        if (prefs.getBoolean("welcome_shown", false)) return
+        prefs.edit().putBoolean("welcome_shown", true).apply()
+        try {
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle("Selamat datang")
+                .setMessage("Terima kasih sudah menggunakan Buriq Tools.")
+                .setPositiveButton("Oke", null)
+                .setOnDismissListener { hideSystemBars() }
+                .show()
+        } catch (e: Throwable) {
+        }
     }
 
     // ---------- helper UI ----------
@@ -568,29 +551,11 @@ class MainActivity : Activity() {
             setTextColor(colorText)
         }
         val brand = TextView(this).apply {
-            text = if (horror) "Sudah Malam Apa Sudah Tahu?          " else "BURIQ TOOLS"
+            text = "BURIQ TOOLS"
             textSize = 11f
-            letterSpacing = if (horror) 0.1f else 0.2f
-            setTextColor(if (horror) colorRed else colorDim)
+            letterSpacing = 0.2f
+            setTextColor(colorDim)
             typeface = Typeface.DEFAULT_BOLD
-            if (horror) {
-                // teks berjalan (marquee)
-                isSingleLine = true
-                ellipsize = android.text.TextUtils.TruncateAt.MARQUEE
-                marqueeRepeatLimit = -1
-                isSelected = true
-            }
-            // Easter egg: ketuk judul 7x untuk pratinjau/matikan mode horor
-            setOnClickListener {
-                val now = System.currentTimeMillis()
-                brandTaps = if (now - lastBrandTap < 1500) brandTaps + 1 else 1
-                lastBrandTap = now
-                if (brandTaps >= 7) {
-                    brandTaps = 0
-                    horrorForce = !horror
-                    recreate()
-                }
-            }
         }
         val gear = TextView(this).apply {
             text = "⚙"
@@ -617,11 +582,7 @@ class MainActivity : Activity() {
             )
         }
         topBar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-        if (horror) {
-            topBar.addView(brand, LinearLayout.LayoutParams(dp(190), LinearLayout.LayoutParams.WRAP_CONTENT))
-        } else {
-            topBar.addView(brand)
-        }
+        topBar.addView(brand)
         topBar.addView(gear, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(12) })
 
         // ===== Panel kiri: daftar game =====
@@ -901,9 +862,9 @@ class MainActivity : Activity() {
             column.setPadding(l, dp(8), r, dp(10))
             insets
         }
-        rootView = rootFrame
         setContentView(rootFrame)
         hideSystemBars()
+        ui.post { showWelcomeOnce() }
 
         try {
             Shizuku.addRequestPermissionResultListener(permListener)
