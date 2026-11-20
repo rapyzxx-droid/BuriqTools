@@ -53,6 +53,8 @@ class MainActivity : Activity() {
     private lateinit var modeTileTitle: TextView
     private lateinit var modeTileSub: TextView
     private lateinit var offsetSeek: SeekBar
+    private var pixelSharp = false  // Piksel Tajam  -> forceNearestFiltering
+    private var hardMip = false     // Batas Jarak Tegas -> forceNearestMipFiltering
     private lateinit var logPanel: LinearLayout
     private lateinit var settingsPanel: LinearLayout
     private val gameCards = mutableListOf<LinearLayout>()
@@ -195,6 +197,45 @@ class MainActivity : Activity() {
             addView(s)
         }
         return Triple(box, t, s)
+    }
+
+    private fun makeToggle(
+        title: String,
+        desc: String,
+        checked: Boolean,
+        onChange: (Boolean) -> Unit
+    ): LinearLayout {
+        val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+        val sw = android.widget.Switch(this).apply {
+            isChecked = checked
+            thumbTintList = ColorStateList(states, intArrayOf(colorAccentLight, colorGray))
+            trackTintList = ColorStateList(states, intArrayOf(colorAccent, Color.parseColor("#55FFFFFF")))
+            setOnCheckedChangeListener { _, c -> onChange(c) }
+        }
+        val t = TextView(this).apply {
+            text = title
+            textSize = 13f
+            setTextColor(colorText)
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        val d = TextView(this).apply {
+            text = desc
+            textSize = 10.5f
+            setTextColor(colorDim)
+        }
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(t, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(sw)
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = glass(36, 80, 12)
+            setPadding(dp(12), dp(6), dp(12), dp(8))
+            addView(head)
+            addView(d)
+        }
     }
 
     private fun currentPkg(): String = games[selectedGame].second
@@ -453,10 +494,15 @@ class MainActivity : Activity() {
         if (!ensureReady()) return
         val pkg = currentPkg()
         val n = offsetSeek.progress
+        val feats = mutableListOf<String>()
+        if (pixelSharp) feats += "forceNearestFiltering"
+        if (hardMip) feats += "forceNearestMipFiltering"
+        if (n > 0) feats += "forceTextureLodOffset$n"
+        val featStr = if (feats.isEmpty()) "''" else feats.joinToString(":")
         val cmd = "settings put global angle_gl_driver_selection_pkgs $pkg && " +
             "settings put global angle_gl_driver_selection_values angle && " +
             "setprop debug.angle.feature_overrides_enabled " +
-            "forceNearestFiltering:disableAnisotropicFiltering:forceTextureLodOffset$n && " +
+            featStr + " && " +
             "am force-stop $pkg"
         exec(cmd) { out ->
             checkStatus("Diterapkan ke $pkg (offset $n) via ${modeLabel()}.", out, afterApply = true)
@@ -507,9 +553,11 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
 
         prefs = getSharedPreferences("buriq", Context.MODE_PRIVATE)
-        val savedOffset = prefs.getInt("offset", 3).coerceIn(0, 4)
+        val savedOffset = prefs.getInt("offset_v2", 1).coerceIn(0, 4)
         selectedGame = prefs.getInt("game", 0).coerceIn(0, games.size - 1)
         mode = prefs.getString("mode", "root") ?: "root"
+        pixelSharp = prefs.getBoolean("pixel_sharp", false)
+        hardMip = prefs.getBoolean("hard_mip", false)
 
         status = TextView(this).apply {
             text = "Belum ada aksi."
@@ -638,7 +686,7 @@ class MainActivity : Activity() {
         offsetSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
                 valueText.text = p.toString()
-                prefs.edit().putInt("offset", p).apply()
+                prefs.edit().putInt("offset_v2", p).apply()
             }
             override fun onStartTrackingTouch(s: SeekBar?) {}
             override fun onStopTrackingTouch(s: SeekBar?) {}
@@ -670,15 +718,28 @@ class MainActivity : Activity() {
         applyBox.background = rounded(colorAccent, 12)
         applyT.setTextColor(colorOnAccent)
         applyS.setTextColor(colorOnAccent)
-        val (statusBox, _, _) = makeTile("Cek status", "baca pengaturan ANGLE") {
-            if (ensureReady()) checkStatus("Status (${modeLabel()}):")
+        val pixelCard = makeToggle(
+            "Piksel Tajam",
+            "Tepi tekstur kotak-kotak. Matikan untuk efek buram halus.",
+            pixelSharp
+        ) { on ->
+            pixelSharp = on
+            prefs.edit().putBoolean("pixel_sharp", on).apply()
+        }
+        val mipCard = makeToggle(
+            "Batas Jarak Tegas",
+            "Perpindahan detail dekat-jauh jadi patah-patah.",
+            hardMip
+        ) { on ->
+            hardMip = on
+            prefs.edit().putBoolean("hard_mip", on).apply()
         }
 
         val settingsBody = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         settingsBody.addWithMargin(modeBox)
         settingsBody.addWithMargin(texBlock, 8)
+        settingsBody.addWithMargin(rowOfTwo(pixelCard, mipCard), 8)
         settingsBody.addWithMargin(rowOfTwo(resetBox, applyBox), 8)
-        settingsBody.addWithMargin(statusBox, 8)
 
         val settingsHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
