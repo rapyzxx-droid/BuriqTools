@@ -61,7 +61,8 @@ class MainActivity : Activity() {
 
     private var selectedGame = 0
     private var mode = "root"
-    private var rootOk: Boolean? = null
+    @Volatile private var rootOk: Boolean? = null
+    @Volatile private var busy = false
     private val ui = Handler(Looper.getMainLooper())
 
     private val colorText = Color.parseColor("#F2F7F5")
@@ -392,12 +393,15 @@ class MainActivity : Activity() {
     private fun checkRoot() {
         Thread {
             val out = try {
-                runProcess(arrayOf("su", "-c", "id"))
+                runProcess(arrayOf("su", "-c", "id"), 60_000L)
             } catch (e: Exception) {
                 ""
             }
             rootOk = out.contains("uid=0")
-            runOnUiThread { refreshUi() }
+            runOnUiThread {
+                refreshUi()
+                if (mode == "root") checkStaleAfterReboot()
+            }
         }.start()
     }
 
@@ -438,86 +442,209 @@ class MainActivity : Activity() {
 
     // ---------- eksekusi perintah ----------
 
-    private fun readAll(p: Process): String {
-        val o = p.inputStream.bufferedReader().readText()
-        val e = p.errorStream.bufferedReader().readText()
-        p.waitFor()
-        return (o + e).trim()
+    private val cmdTimeoutMs = 30_000L
+
+    // Baca stdout & stderr bersamaan (tidak saling mengunci) dengan batas waktu.
+    private fun readAll(p: Process, timeoutMs: Long = cmdTimeoutMs): String {
+        val o = StringBuffer()
+        val e = StringBuffer()
+        val to = Thread {
+            try { o.append(p.inputStream.bufferedReader().readText()) } catch (ex: Exception) { }
+        }
+        val te = Thread {
+            try { e.append(p.errorStream.bufferedReader().readText()) } catch (ex: Exception) { }
+        }
+        to.start()
+        te.start()
+        val deadline = System.currentTimeMillis() + timeoutMs
+        to.join(timeoutMs)
+        te.join(maxOf(1L, deadline - System.currentTimeMillis()))
+        var timedOut = false
+        if (to.isAlive || te.isAlive) {
+            timedOut = true
+            try { p.destroy() } catch (ex: Exception) { }
+            to.join(1000)
+            te.join(1000)
+        } else {
+            try { p.waitFor() } catch (ex: Exception) { }
+        }
+        val res = (o.toString() + e.toString()).trim()
+        return if (timedOut) "$res\n[waktu habis setelah ${timeoutMs / 1000} detik]".trim() else res
     }
 
-    private fun runProcess(args: Array<String>): String {
+    private fun runProcess(args: Array<String>, timeoutMs: Long = cmdTimeoutMs): String {
         val p = Runtime.getRuntime().exec(args)
-        return readAll(p)
+        return readAll(p, timeoutMs)
     }
 
-    // Shizuku.newProcess bersifat private di API 13, jadi dipanggil lewat reflection.
-    private fun runShizuku(cmd: String): String {
-        val m = Shizuku::class.java.getDeclaredMethod(
+    // Shizuku.newProcess bersifat private di API 13, jadi dipanggil lewat reflection (dicache).
+    private val shizukuNewProcess by lazy {
+        Shizuku::class.java.getDeclaredMethod(
             "newProcess",
             Array<String>::class.java,
             Array<String>::class.java,
             String::class.java
-        )
-        m.isAccessible = true
+        ).apply { isAccessible = true }
+    }
+
+    private fun runShizuku(cmd: String): String {
+        val m = try {
+            shizukuNewProcess
+        } catch (ex: NoSuchMethodException) {
+            return "Gagal (Shizuku): metode newProcess tidak ditemukan. " +
+                "Versi library Shizuku tidak cocok dengan aplikasi ini."
+        }
         val p = m.invoke(null, arrayOf("sh", "-c", cmd), null, null) as Process
         return readAll(p)
     }
 
+    private fun isFail(out: String): Boolean = out.startsWith("Gagal (")
+
     private fun exec(cmd: String, done: (String) -> Unit) {
         val useRoot = mode == "root"
+        busy = true
         Thread {
             val out = try {
                 if (useRoot) runProcess(arrayOf("su", "-c", cmd)) else runShizuku(cmd)
-            } catch (ex: Exception) {
+            } catch (ex: Throwable) {
                 val why = ex.cause?.message ?: ex.message
                 "Gagal (${if (useRoot) "root" else "Shizuku"}): $why"
             }
-            runOnUiThread { done(out) }
+            runOnUiThread {
+                busy = false
+                done(out)
+            }
         }.start()
     }
 
-    private fun checkStatus(header: String, extra: String = "", afterApply: Boolean = false) {
-        val cmd = "settings list global | grep -i angle ; " +
-            "echo prop=$(getprop debug.angle.feature_overrides_enabled)"
+    // Membaca keadaan sebenarnya di perangkat lalu membandingkannya dengan yang diharapkan.
+    // expectPkg == null berarti: setelah reset, semua pengaturan ANGLE harus bersih.
+    private fun checkStatus(
+        header: String,
+        extra: String = "",
+        expectPkg: String? = null,
+        expectFeats: String = ""
+    ) {
+        val cmd = "echo pkgs=$(settings get global angle_gl_driver_selection_pkgs); " +
+            "echo vals=$(settings get global angle_gl_driver_selection_values); " +
+            "echo prop=$(getprop debug.angle.feature_overrides_enabled); " +
+            "echo angle=$(pm path com.android.angle 2>/dev/null | head -n 1)"
         exec(cmd) { out ->
-            var t = header
-            if (extra.isNotBlank()) t += "\n$extra"
-            t += "\n$out"
-            if (afterApply && mode == "shizuku" && out.trim().endsWith("prop=")) {
-                t += "\nCatatan: properti debug.angle tidak ter-set lewat Shizuku. Coba mode Root."
+            if (isFail(out)) {
+                setLog(header + " (belum terverifikasi)\n" + out)
+                return@exec
             }
-            setLog(t)
+            val kv = out.lines().mapNotNull { l ->
+                val i = l.indexOf('=')
+                if (i > 0) l.substring(0, i).trim() to l.substring(i + 1).trim() else null
+            }.toMap()
+            val pkgs = kv["pkgs"].orEmpty()
+            val vals = kv["vals"].orEmpty()
+            val prop = kv["prop"].orEmpty()
+            val angle = kv["angle"].orEmpty()
+
+            val problems = mutableListOf<String>()
+            if (expectPkg != null) {
+                if (!pkgs.split(",").contains(expectPkg)) {
+                    problems += "Pengaturan ANGLE untuk $expectPkg tidak tercatat di perangkat."
+                }
+                if (!vals.split(",").contains("angle")) {
+                    problems += "Nilai driver 'angle' tidak tercatat."
+                }
+                if (expectFeats.isNotEmpty() && prop != expectFeats) {
+                    problems += "Properti fitur tidak ter-set (isi: '$prop', seharusnya: '$expectFeats')." +
+                        if (mode == "shizuku") " Coba mode Root." else ""
+                }
+            } else {
+                if (pkgs.isNotEmpty() && pkgs != "null") problems += "Sisa pengaturan ANGLE masih ada: $pkgs"
+                if (prop.isNotEmpty()) problems += "Properti fitur masih terisi: $prop"
+            }
+
+            val t = StringBuilder(header)
+            t.append(if (problems.isEmpty()) " ✓ terverifikasi" else " ⚠ perlu dicek")
+            if (extra.isNotBlank()) t.append("\n").append(extra)
+            problems.forEach { t.append("\n⚠ ").append(it) }
+            if (expectPkg != null) {
+                if (angle.isEmpty()) {
+                    t.append("\nInfo: paket com.android.angle tidak terdeteksi; belum tentu masalah, ")
+                    t.append("tapi efek bisa saja tidak terjadi di perangkat ini.")
+                }
+                t.append("\nCatatan: ANGLE hanya memengaruhi OpenGL ES, bukan Vulkan.")
+            }
+            t.append("\n\npkgs=").append(pkgs)
+            t.append("\nvals=").append(vals)
+            t.append("\nprop=").append(prop)
+            t.append("\nangle=").append(if (angle.isEmpty()) "-" else angle)
+            setLog(t.toString())
+        }
+    }
+
+    // Setelah reboot properti debug.* hilang, sedangkan pengaturan ANGLE di settings tetap ada.
+    private fun checkStaleAfterReboot() {
+        val pkg = prefs.getString("applied_pkg", null) ?: return
+        val expected = prefs.getString("applied_feats", "") ?: ""
+        if (expected.isEmpty() || busy) return
+        if (mode == "shizuku" && shizukuState() != 0) return
+        if (mode == "root" && rootOk != true) return
+        exec("getprop debug.angle.feature_overrides_enabled") { out ->
+            if (!isFail(out) && !out.contains("[waktu habis") && out.trim() != expected) {
+                setLog(
+                    "⚠ Pengaturan lama untuk $pkg sudah tidak aktif (kemungkinan setelah reboot).\n" +
+                        "Tekan Mulai/Terapkan lagi, atau Reset untuk membersihkan."
+                )
+            }
         }
     }
 
     private fun applyOffset(launchAfter: Boolean) {
+        if (busy) {
+            setLog("Masih memproses perintah sebelumnya, tunggu sebentar.")
+            return
+        }
         if (!ensureReady()) return
         val pkg = currentPkg()
+        if (!isInstalled(pkg)) {
+            setLog("Game $pkg belum terpasang.")
+            return
+        }
         val n = offsetSeek.progress
         val feats = mutableListOf<String>()
         if (pixelSharp) feats += "forceNearestFiltering"
         if (hardMip) feats += "forceNearestMipFiltering"
         if (n > 0) feats += "forceTextureLodOffset$n"
-        val featStr = if (feats.isEmpty()) "''" else feats.joinToString(":")
+        val expected = feats.joinToString(":")
+        val featStr = if (feats.isEmpty()) "''" else expected
         val cmd = "settings put global angle_gl_driver_selection_pkgs $pkg && " +
             "settings put global angle_gl_driver_selection_values angle && " +
             "setprop debug.angle.feature_overrides_enabled " +
             featStr + " && " +
             "am force-stop $pkg"
         exec(cmd) { out ->
-            checkStatus("Diterapkan ke $pkg (offset $n) via ${modeLabel()}.", out, afterApply = true)
+            if (!isFail(out)) {
+                prefs.edit().putString("applied_pkg", pkg).putString("applied_feats", expected).apply()
+            }
+            checkStatus("Perintah dikirim ke $pkg (offset $n) via ${modeLabel()}.", out, pkg, expected)
             if (launchAfter) ui.postDelayed({ launchGame(true) }, 700)
         }
     }
 
     private fun resetAll() {
+        if (busy) {
+            setLog("Masih memproses perintah sebelumnya, tunggu sebentar.")
+            return
+        }
         if (!ensureReady()) return
         val pkg = currentPkg()
         val cmd = "setprop debug.angle.feature_overrides_enabled '' ; " +
             "settings delete global angle_gl_driver_selection_pkgs ; " +
             "settings delete global angle_gl_driver_selection_values ; " +
             "am force-stop $pkg"
-        exec(cmd) { out -> checkStatus("Direset ke normal via ${modeLabel()}.", out) }
+        exec(cmd) { out ->
+            if (!isFail(out)) {
+                prefs.edit().remove("applied_pkg").remove("applied_feats").apply()
+            }
+            checkStatus("Reset dikirim via ${modeLabel()}.", out, null)
+        }
     }
 
     private fun launchGame(silent: Boolean) {
@@ -938,6 +1065,7 @@ class MainActivity : Activity() {
         refreshUi()
         updateBattery()
         if (mode == "root") checkRoot()
+        else ui.postDelayed({ checkStaleAfterReboot() }, 1500)
     }
 
     // Sembunyikan status bar & navigation bar; muncul sementara kalau digeser dari tepi layar.
@@ -984,6 +1112,7 @@ class MainActivity : Activity() {
             Shizuku.removeBinderDeadListener(deadListener)
         } catch (e: Throwable) {
         }
+        ui.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
 }
