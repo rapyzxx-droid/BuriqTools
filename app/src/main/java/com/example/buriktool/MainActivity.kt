@@ -57,6 +57,7 @@ class MainActivity : Activity() {
     private var hardMip = false     // Batas Jarak Tegas -> forceNearestMipFiltering
     private lateinit var logPanel: LinearLayout
     private lateinit var settingsPanel: LinearLayout
+    private lateinit var settingsScrim: View  // lapisan transparan: ketuk di luar panel = tutup
     private val gameCards = mutableListOf<LinearLayout>()
 
     private var selectedGame = 0
@@ -662,16 +663,21 @@ class MainActivity : Activity() {
 
     // ---------- buka/tutup panel ----------
 
+    private fun setSettingsVisible(show: Boolean) {
+        settingsPanel.visibility = if (show) View.VISIBLE else View.GONE
+        settingsScrim.visibility = if (show) View.VISIBLE else View.GONE
+    }
+
     private fun toggleSettings() {
         val show = settingsPanel.visibility != View.VISIBLE
-        settingsPanel.visibility = if (show) View.VISIBLE else View.GONE
+        setSettingsVisible(show)
         if (show) logPanel.visibility = View.GONE
     }
 
     private fun toggleLog() {
         val show = logPanel.visibility != View.VISIBLE
         logPanel.visibility = if (show) View.VISIBLE else View.GONE
-        if (show) settingsPanel.visibility = View.GONE
+        if (show) setSettingsVisible(false)
     }
 
     // ---------- lifecycle ----------
@@ -883,7 +889,7 @@ class MainActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
             setPadding(dp(10), dp(4), dp(10), dp(4))
             isClickable = true
-            setOnClickListener { settingsPanel.visibility = View.GONE }
+            setOnClickListener { setSettingsVisible(false) }
         })
         settingsPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1026,6 +1032,20 @@ class MainActivity : Activity() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             ).apply { setMargins(dp(80), dp(50), dp(80), dp(20)) }
+        )
+        // Ketuk di mana saja di luar panel pengaturan = tutup. Ketukan di dalam panel
+        // (Reset, Terapkan, slider, toggle) tidak menutup karena panel menyerap sentuhannya sendiri.
+        settingsScrim = View(this).apply {
+            visibility = View.GONE
+            isClickable = true
+            setOnClickListener { setSettingsVisible(false) }
+        }
+        rootFrame.addView(
+            settingsScrim,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
         )
         rootFrame.addView(
             settingsPanel,
