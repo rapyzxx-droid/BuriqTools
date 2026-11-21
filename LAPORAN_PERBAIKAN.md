@@ -47,3 +47,10 @@ Status: belum dibuild/diuji (sandbox tidak punya Android SDK dan jaringan). Sint
 - Ketukan di dalam panel (Reset, Terapkan, slider, toggle, Mode) TIDAK menutup panel.
 - Cara kerja: lapisan transparan (scrim) di belakang panel; panel menyerap sentuhannya sendiri.
 - Versi: versionCode 8, versionName 1.7.
+
+---
+# v1.8 — Panel log
+- Ketuk di mana saja di luar panel Log sekarang menutup panel (sama seperti panel pengaturan).
+- Ketukan di dalam panel log tidak menutup, supaya teks log tetap bisa dipilih dan disalin.
+- Membuka pengaturan otomatis menutup log, dan sebaliknya (scrim ikut disinkronkan).
+- Versi: versionCode 9, versionName 1.8.

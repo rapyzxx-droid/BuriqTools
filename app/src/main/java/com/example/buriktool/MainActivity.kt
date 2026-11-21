@@ -57,6 +57,7 @@ class MainActivity : Activity() {
     private var hardMip = false     // Batas Jarak Tegas -> forceNearestMipFiltering
     private lateinit var logPanel: LinearLayout
     private lateinit var settingsPanel: LinearLayout
+    private lateinit var logScrim: View  // lapisan transparan: ketuk di luar log = tutup
     private lateinit var settingsScrim: View  // lapisan transparan: ketuk di luar panel = tutup
     private val gameCards = mutableListOf<LinearLayout>()
 
@@ -668,15 +669,20 @@ class MainActivity : Activity() {
         settingsScrim.visibility = if (show) View.VISIBLE else View.GONE
     }
 
+    private fun setLogVisible(show: Boolean) {
+        logPanel.visibility = if (show) View.VISIBLE else View.GONE
+        logScrim.visibility = if (show) View.VISIBLE else View.GONE
+    }
+
     private fun toggleSettings() {
         val show = settingsPanel.visibility != View.VISIBLE
         setSettingsVisible(show)
-        if (show) logPanel.visibility = View.GONE
+        if (show) setLogVisible(false)
     }
 
     private fun toggleLog() {
         val show = logPanel.visibility != View.VISIBLE
-        logPanel.visibility = if (show) View.VISIBLE else View.GONE
+        setLogVisible(show)
         if (show) setSettingsVisible(false)
     }
 
@@ -945,7 +951,7 @@ class MainActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
             setPadding(dp(10), dp(4), dp(10), dp(4))
             isClickable = true
-            setOnClickListener { logPanel.visibility = View.GONE }
+            setOnClickListener { setLogVisible(false) }
         })
         val logScroll = ScrollView(this).apply { addView(status) }
         logPanel = LinearLayout(this).apply {
@@ -1021,6 +1027,20 @@ class MainActivity : Activity() {
         }
         rootFrame.addView(
             column,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        // Ketuk di mana saja di luar panel log = tutup. Ketukan di dalam panel (memilih/menyalin
+        // teks log) tidak menutup karena panel menyerap sentuhannya sendiri.
+        logScrim = View(this).apply {
+            visibility = View.GONE
+            isClickable = true
+            setOnClickListener { setLogVisible(false) }
+        }
+        rootFrame.addView(
+            logScrim,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
